@@ -80,3 +80,15 @@ button[type="button"]:hover {
     background-color: #f8f9fa;
     border-color: #bbb;
 }
+.error {
+    border-color: red;
+    animation: shake 0.3s;
+}
+
+@keyframes shake {
+    0% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    50% { transform: translateX(4px); }
+    75% { transform: translateX(-4px); }
+    100% { transform: translateX(0); }
+}
