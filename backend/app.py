@@ -1,30 +1,81 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Authentication</title>
-    
-</head>
-<link rel="stylesheet" href="styles.css">
-<body>
-    <div>
-        <h2>Login</h2>
-        <form action="http://127.0.0.1:5000/login" method="POST">
-            <button type="button" onclick="window.location.href='/register'">
-                <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google Logo" style="width:20px; height:20px; vertical-align:middle; margin-left:5px;">
-            Continue with Google
-            </button>
-            <br><br>
-            <p>OR</p>
-            <label for="username">Username:</label>
-            <input type="text" placeholder="Enter Username" id="username" name="username" required>
-            <br><br>
-            <label for="password">Password:</label>
-            <input type="password" placeholder="Enter Password" id="password" name="password" required>
-            <br><br>
-           <button type="submit">Login</button>
-    </div>
-    <script src="script.js"></script>
-</body>
-</html>
+from flask import Flask, request, render_template_string
+import sqlite3
+import bcrypt
+
+app = Flask(__name__)
+DB_NAME = "users.db"
+
+
+# ---------------- DATABASE HELPERS ----------------
+def get_db():
+    return sqlite3.connect(DB_NAME)
+
+
+def create_users_table():
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password BLOB NOT NULL
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+def add_user(username, password):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+
+    try:
+        cursor.execute(
+            "INSERT INTO users (username, password) VALUES (?, ?)",
+            (username, hashed)
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        pass  # user already exists
+
+    conn.close()
+
+
+# ---------------- ROUTES ----------------
+@app.route("/login", methods=["POST"])
+def login():
+    username = request.form.get("username")
+    password = request.form.get("password")
+
+    if not username or not password:
+        return render_template_string("<h2>Missing fields</h2>")
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT password FROM users WHERE username = ?", (username,))
+    user = cursor.fetchone()
+
+    conn.close()
+
+    if user and bcrypt.checkpw(password.encode(), user[0]):
+        return render_template_string(
+            f"<h2>Login Successful</h2><p>Welcome, {username}</p>"
+        )
+
+    return render_template_string("<h2>Invalid username or password</h2>")
+
+
+# ---------------- APP START ----------------
+if __name__ == "__main__":
+    create_users_table()
+
+    # TEMP users (only added once)
+    add_user("admin", "admin123")
+    add_user("user", "password123")
+
+    app.run(debug=True)
