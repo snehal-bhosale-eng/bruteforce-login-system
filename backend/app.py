@@ -3,7 +3,11 @@ import sqlite3
 import bcrypt
 
 app = Flask(__name__)
-DB_NAME = "users.db"
+DB_NAME = "../database/security_project.db"
+print("DATABASE PATH:", DB_NAME)
+
+
+
 
 
 # ---------------- DATABASE HELPERS ----------------
@@ -50,9 +54,7 @@ def add_user(username, password):
 def login():
     username = request.form.get("username")
     password = request.form.get("password")
-
-    if not username or not password:
-        return render_template_string("<h2>Missing fields</h2>")
+    ip_address = request.remote_addr
 
     conn = get_db()
     cursor = conn.cursor()
@@ -60,14 +62,28 @@ def login():
     cursor.execute("SELECT password FROM users WHERE username = ?", (username,))
     user = cursor.fetchone()
 
-    conn.close()
+    # Default: failed attempt
+    success = 0
 
     if user and bcrypt.checkpw(password.encode(), user[0]):
+        success = 1
+
+    # 🔥 INSERT INTO login_logs (THIS WAS MISSING)
+    cursor.execute(
+        "INSERT INTO login_logs (username, success, ip_address) VALUES (?, ?, ?)",
+        (username, success, ip_address)
+    )
+
+    conn.commit()
+    conn.close()
+
+    if success == 1:
         return render_template_string(
             f"<h2>Login Successful</h2><p>Welcome, {username}</p>"
         )
 
     return render_template_string("<h2>Invalid username or password</h2>")
+
 
 
 # ---------------- APP START ----------------
