@@ -33,6 +33,25 @@ def create_users_table():
     conn.commit()
     conn.close()
 
+def create_login_logs_table():
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS login_logs (
+            log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            success INTEGER,
+            ip_address TEXT,
+            user_agent TEXT
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+    
+
 
 def add_user(username, password):
     conn = get_db()
@@ -51,6 +70,8 @@ def add_user(username, password):
         pass  # user already exists
 
     conn.close()
+
+    
 
 
 # ---------------- ROUTES ----------------
@@ -95,8 +116,16 @@ def login():
 
 
 # ---------------- APP START ----------------
+
 if __name__ == "__main__":
     create_users_table()
+    create_login_logs_table()   # ADD THIS
+
+    add_user("admin", "admin123")
+    add_user("user", "password123")
+
+    app.run(debug=True)
+
 
     # TEMP users (only added once)
     add_user("admin", "admin123")
