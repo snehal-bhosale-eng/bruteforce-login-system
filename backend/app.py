@@ -98,6 +98,30 @@ def login():
        
     current_time = datetime.now()
     ip_address = request.remote_addr
+    from datetime import timedelta
+
+    # 🔹 Define time window (2 minutes)
+    window_start = current_time - timedelta(minutes=2)
+
+    # 🔹 Count attempts from same IP within last 2 minutes
+    cursor.execute("""
+    SELECT COUNT(*)
+    FROM login_logs
+    WHERE ip_address = ?
+    AND timestamp >= ?
+    """, (ip_address, window_start.isoformat()))
+
+    result = cursor.fetchone()
+    continuous_attempts = result[0] if result else 0
+
+    print("Continuous Attempts:", continuous_attempts)
+    suspicious_continuity = False
+
+    if continuous_attempts >= 4:
+     print("🚨 RETRY CONTINUITY DETECTED")
+
+
+
     user_agent = request.headers.get("User-Agent")
 
     # 🔹 Fetch previous attempt from same IP
