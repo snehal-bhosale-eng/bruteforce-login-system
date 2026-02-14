@@ -1,3 +1,4 @@
+from datetime import datetime
 from flask import Flask, request, render_template_string
 import sqlite3
 import bcrypt
@@ -94,17 +95,40 @@ def login():
 
     if user and bcrypt.checkpw(password.encode(), user[0]):
         success = 1
+       
+    current_time = datetime.now()
+    ip_address = request.remote_addr
+    user_agent = request.headers.get("User-Agent")
+
+    # 🔹 Fetch previous attempt from same IP
+    cursor.execute("""
+        SELECT timestamp
+        FROM login_logs
+        WHERE ip_address = ?
+        ORDER BY timestamp DESC
+        LIMIT 1
+    """, (ip_address,))
+
+    row = cursor.fetchone()
+
+    if row:
+        previous_time = datetime.fromisoformat(row[0])
+        time_gap = (current_time - previous_time).total_seconds()
+    else:
+        time_gap = None
+
+    print("Time Gap:", time_gap)
+
 
     # 🔥 INSERT INTO login_logs (THIS WAS MISSING)
-    cursor.execute(
-    "INSERT INTO login_logs (username, success, ip_address, user_agent) VALUES (?, ?, ?, ?)",
-    (username, success, ip_address, user_agent)
-)
-
-   
+    cursor.execute("""
+        INSERT INTO login_logs (username, timestamp, success, ip_address, user_agent)
+        VALUES (?, ?, ?, ?, ?)
+    """, (username, current_time.isoformat(), success, ip_address, user_agent))
 
     conn.commit()
     conn.close()
+
 
     if success == 1:
         return render_template_string(
