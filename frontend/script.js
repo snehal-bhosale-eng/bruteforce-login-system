@@ -1,5 +1,6 @@
 // get form and inputs
-const form = document.querySelector("form");
+
+const form = document.querySelector(".login-container form");
 const username = document.getElementById("username");
 const password = document.getElementById("password");
 
@@ -19,9 +20,13 @@ form.addEventListener("submit", function (e) {
     }
 
     // DO NOT preventDefault here
-    const loginBtn = form.querySelector('button[type="submit"]');
-    loginBtn.innerText = "Logging in...";
+    const btnText = document.getElementById("btn-text");
+    const loginBtn = document.getElementById("loginBtn");
+
+    btnText.innerText = "Logging in...";
     loginBtn.disabled = true;
+
+
 });
 
 // small error animation helper
@@ -34,3 +39,13 @@ function shakeInputs() {
         password.classList.remove("error");
     }, 300);
 }
+// Show password toggle
+const togglePassword = document.getElementById("togglePassword");
+
+togglePassword.addEventListener("change", function () {
+    if (password.type === "password") {
+        password.type = "text";
+    } else {
+        password.type = "password";
+    }
+});

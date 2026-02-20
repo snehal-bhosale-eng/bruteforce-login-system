@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Security Dashboard</title>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body {
+            font-family: Arial;
+            background: #f4f6f9;
+            padding: 20px;
+        }
+
+        h2 {
+            text-align: center;
+        }
+
+        .card-container {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            flex: 1;
+            min-width: 200px;
+            text-align: center;
+        }
+
+        .chart-container {
+            width: 300px;
+            height: 300px;
+            margin: 30px auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            text-align: center;
+        }
+
+        th {
+            background: #1a73e8;
+            color: white;
+        }
+
+        .Normal {
+            color: green;
+            font-weight: bold;
+        }
+
+        .Suspicious {
+            color: orange;
+            font-weight: bold;
+        }
+
+        .Attack {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+
+<h2>Security Dashboard</h2>
+
+<div class="card-container">
+    <div class="card">
+        <b>Total Attempts</b><br>
+        {{ total_attempts }}
+    </div>
+
+    <div class="card">
+        <b>Failed Attempts</b><br>
+        {{ failed_attempts }}
+    </div>
+
+    <div class="card">
+        <b>Attack Attempts</b><br>
+        {{ attack_attempts }}
+    </div>
+
+    <div class="card">
+        <b>Suspicious Attempts</b><br>
+        {{ suspicious_attempts }}
+    </div>
+
+    <div class="card">
+        <b>Suspicious IP Count</b><br>
+        {{ suspicious_ip_count }}
+    </div>
+</div>
+
+<h3 style="text-align:center;">Risk Distribution</h3>
+
+<div class="chart-container">
+    <canvas id="riskChart"></canvas>
+</div>
+
+<h3>Recent Login Activity</h3>
+
+<table>
+<tr>
+    <th>Username</th>
+    <th>Timestamp</th>
+    <th>Risk Score</th>
+    <th>Risk Level</th>
+</tr>
+
+{% for row in logs %}
+<tr>
+    <td>{{ row[0] }}</td>
+    <td>{{ row[1] }}</td>
+    <td>{{ row[2] }}</td>
+    <td class="{{ row[3] }}">{{ row[3] }}</td>
+</tr>
+{% endfor %}
+
+</table>
+
+
+<script>
+const ctx = document.getElementById('riskChart').getContext('2d');
+
+new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+        labels: {{ risk_labels | tojson }},
+        datasets: [{
+            data: {{ risk_values | tojson }},
+            backgroundColor: ['green', 'orange', 'red']
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false
+    }
+});
+</script>
+
+</body>
+</html>
