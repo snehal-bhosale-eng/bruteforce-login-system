@@ -1,4 +1,6 @@
-from datetime import datetime
+
+from datetime import datetime, timedelta
+from ipaddress import ip_address
 from flask import Flask, request, render_template_string
 import sqlite3
 import bcrypt
@@ -51,6 +53,19 @@ def create_login_logs_table():
 
     conn.commit()
     conn.close()
+def create_blocked_ips_table():
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS blocked_ips (
+            ip_address TEXT PRIMARY KEY,
+            blocked_until TEXT
+        )
+    """)
+
+    conn.commit()
+    conn.close()
     
 
 
@@ -72,6 +87,69 @@ def add_user(username, password):
 
     conn.close()
 
+# ---------------- RISK ENGINE HELPERS ----------------
+
+def is_ip_blocked(ip):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT blocked_until FROM blocked_ips
+        WHERE ip_address = ?
+    """, (ip,))
+
+    row = cursor.fetchone()
+    conn.close()
+
+    if row:
+        blocked_until = datetime.fromisoformat(row[0])
+        if datetime.now() < blocked_until:
+            return True
+
+    return False
+
+
+def block_ip(ip, minutes=10):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    blocked_until = datetime.now() + timedelta(minutes=minutes)
+
+    cursor.execute("""
+        INSERT OR REPLACE INTO blocked_ips (ip_address, blocked_until)
+        VALUES (?, ?)
+    """, (ip, blocked_until.isoformat()))
+
+    conn.commit()
+    conn.close()
+
+
+def calculate_risk_score(time_gap, continuous_attempts, unique_usernames, fail_count):
+    risk_score = 0
+
+    if time_gap and time_gap < 2:
+        risk_score += 20
+
+    if continuous_attempts >= 4:
+        risk_score += 30
+
+    if unique_usernames >= 3:
+        risk_score += 25
+
+    if fail_count >= 5:
+        risk_score += 25
+
+    return risk_score
+
+
+def get_risk_level(score):
+    if score <= 30:
+        return "Normal"
+    elif score <= 60:
+        return "Suspicious"
+    else:
+        return "Attack"
+
     
 
 
@@ -81,9 +159,14 @@ def login():
     username = request.form.get("username")
     password = request.form.get("password")
     ip_address = request.remote_addr
+    
+    # Check if IP already blocked
+    if is_ip_blocked(ip_address):
+        return render_template_string(
+            "<h2>Your IP is temporarily blocked due to suspicious activity.</h2>"
+        )
+    
     user_agent = request.headers.get("User-Agent")
-
-
     conn = get_db()
     cursor = conn.cursor()
 
@@ -95,15 +178,12 @@ def login():
 
     if user and bcrypt.checkpw(password.encode(), user[0]):
         success = 1
-        # 🔹 Get IP
     
     current_time = datetime.now()
-    ip_address = request.remote_addr
 
     # =============================
-    # FEATURE 3 STARTS HERE
+    # FEATURE 3: Username Enumeration Detection
     # =============================
-
     cursor.execute("""
         SELECT username
         FROM login_logs
@@ -113,58 +193,50 @@ def login():
     """, (ip_address,))
 
     rows = cursor.fetchall()
-
     usernames = [row[0] for row in rows]
-
-    # include current username
     usernames.append(username)
-
     unique_usernames = len(set(usernames))
 
     print("Unique Usernames (Last 5):", unique_usernames)
-
     if unique_usernames >= 3:
         print("🚨 USERNAME ENUMERATION DETECTED")
 
     # =============================
-    # FEATURE 3 ENDS HERE
+    # FEATURE 4: Failed Attempts Persistence
     # =============================
-        current_time = datetime.now()
-    user_agent = request.headers.get("User-Agent")
-
+    fail_window = current_time - timedelta(minutes=5)
     cursor.execute("""
-        INSERT INTO login_logs (username, timestamp, success, ip_address, user_agent)
-        VALUES (?, ?, ?, ?, ?)
-    """, (username, current_time.isoformat(), success, ip_address, user_agent))
+        SELECT COUNT(*)
+        FROM login_logs
+        WHERE ip_address = ?
+        AND success = 0
+        AND timestamp >= ?
+    """, (ip_address, fail_window.isoformat()))
 
-    
-    from datetime import timedelta
+    fail_count = cursor.fetchone()[0]
+    print("Failed Attempts:", fail_count)
 
-    # 🔹 Define time window (2 minutes)
+    # =============================
+    # FEATURE 2: Retry Continuity Detection
+    # =============================
     window_start = current_time - timedelta(minutes=2)
-
-    # 🔹 Count attempts from same IP within last 2 minutes
     cursor.execute("""
-    SELECT COUNT(*)
-    FROM login_logs
-    WHERE ip_address = ?
-    AND timestamp >= ?
+        SELECT COUNT(*)
+        FROM login_logs
+        WHERE ip_address = ?
+        AND timestamp >= ?
     """, (ip_address, window_start.isoformat()))
 
     result = cursor.fetchone()
     continuous_attempts = result[0] if result else 0
 
     print("Continuous Attempts:", continuous_attempts)
-    suspicious_continuity = False
-
     if continuous_attempts >= 4:
-     print("🚨 RETRY CONTINUITY DETECTED")
+        print("🚨 RETRY CONTINUITY DETECTED")
 
-
-
-    user_agent = request.headers.get("User-Agent")
-
-    # 🔹 Fetch previous attempt from same IP
+    # =============================
+    # FEATURE 1: Time Gap Detection
+    # =============================
     cursor.execute("""
         SELECT timestamp
         FROM login_logs
@@ -172,6 +244,26 @@ def login():
         ORDER BY timestamp DESC
         LIMIT 1
     """, (ip_address,))
+    # =====================================================
+# RISK ENGINE
+# =====================================================
+    risk_score = calculate_risk_score(
+    time_gap,
+    continuous_attempts,
+    unique_usernames,
+    fail_count
+   ) 
+
+    risk_level = get_risk_level(risk_score)
+
+    print("Risk Score:", risk_score)
+    print("Risk Level:", risk_level)
+
+    if risk_level == "Attack":
+        block_ip(ip_address)
+        return render_template_string(
+        "<h2>🚨 Suspicious activity detected. Your IP is temporarily blocked.</h2>"
+    )
 
     row = cursor.fetchone()
 
@@ -183,8 +275,7 @@ def login():
 
     print("Time Gap:", time_gap)
 
-
-    # 🔥 INSERT INTO login_logs (THIS WAS MISSING)
+    # Insert login attempt into logs
     cursor.execute("""
         INSERT INTO login_logs (username, timestamp, success, ip_address, user_agent)
         VALUES (?, ?, ?, ?, ?)
@@ -194,28 +285,15 @@ def login():
     conn.close()
 
 
-    if success == 1:
-        return render_template_string(
-            f"<h2>Login Successful</h2><p>Welcome, {username}</p>"
-        )
-
-    return render_template_string("<h2>Invalid username or password</h2>")
-
 
 
 # ---------------- APP START ----------------
 
 if __name__ == "__main__":
     create_users_table()
-    create_login_logs_table()   # ADD THIS
+    create_login_logs_table()
+    create_blocked_ips_table()
 
-    add_user("admin", "admin123")
-    add_user("user", "password123")
-
-    app.run(debug=True)
-
-
-    # TEMP users (only added once)
     add_user("admin", "admin123")
     add_user("user", "password123")
 
